@@ -1,0 +1,44 @@
+[
+  {
+    "id": "insp-001",
+    "elevatorId": "LIFT-DE-4471",
+    "site": "Munich Central Office",
+    "inspector": "Anna Weber",
+    "inspectedAt": "2026-07-14T09:30:00Z",
+    "status": "pending",
+    "findings": [
+      { "id": "f1", "component": "Emergency brake", "severity": "medium", "description": "Wear on left brake pad exceeds 30%." },
+      { "id": "f2", "component": "Door sensor",     "severity": "low",    "description": "Occasional delay of 200ms when closing." }
+    ]
+  },
+  {
+    "id": "insp-002",
+    "elevatorId": "LIFT-DE-2201",
+    "site": "Hamburg Warehouse B",
+    "inspector": "Marco Rossi",
+    "inspectedAt": "2026-07-22T13:15:00Z",
+    "status": "approved",
+    "findings": []
+  },
+  {
+    "id": "insp-003",
+    "elevatorId": "LIFT-DE-9182",
+    "site": "Stuttgart Plant 3",
+    "inspector": "Anna Weber",
+    "inspectedAt": "2026-08-02T08:00:00Z",
+    "status": "rejected",
+    "rejectionReason": "Cable frayed beyond acceptable tolerance; immediate replacement required.",
+    "findings": [
+      { "id": "f3", "component": "Main cable", "severity": "high", "description": "Visible fraying at anchor point." }
+    ]
+  },
+  {
+    "id": "insp-004",
+    "elevatorId": "LIFT-DE-4471",
+    "site": "Munich Central Office",
+    "inspector": "Sofia Kaya",
+    "inspectedAt": "2026-08-10T11:45:00Z",
+    "status": "pending",
+    "findings": []
+  }
+]
