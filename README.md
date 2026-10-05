@@ -61,6 +61,39 @@ The frontend proxies `/api/*` to the backend on port 4000.
 
 ---
 
+### Compliance certificate endpoints (added)
+
+- `POST /api/inspections/:id/certificate` — issue a certificate.
+  - `201` with the certificate: `certificateNumber` (`CERT-<year>-<6 digit sequence>`),
+    `inspectionId`, `issuedAt`, `validUntil` (12 months later, month-end clamped),
+    `elevatorId`, `inspector`, `findings` (snapshot copy).
+  - `409` if the inspection is not `approved`, or already has a certificate.
+  - `404` if the inspection does not exist.
+- `GET  /api/inspections/:id/certificate` — return the stored certificate.
+  - `404` if the inspection does not exist or no certificate was issued yet.
+
+**Re-issue policy:** one certificate per inspection, immutable once issued.
+A second `POST` returns `409` and the original certificate stays unchanged.
+Reason: a certificate is a compliance record; silently replacing it would
+break the audit trail. A replacement (e.g. after expiry or correction) should
+be an explicit, authorised and logged action — not implemented here.
+
+### Bug fixes (added)
+
+1. **Missing state-transition guards (backend).** `approve`, `reject` and
+   `findings` did not check the current status. A rejected inspection could be
+   approved (and then certified), an approved one could be approved again
+   (overwriting `approvedAt`) or rejected, and findings could be added after a
+   decision. Now only `pending` inspections accept these actions; others get `409`.
+2. **Stored XSS (frontend).** Finding descriptions were rendered with
+   `dangerouslySetInnerHTML`, so `<img onerror=...>` in a description would run
+   in every viewer's browser. They are now rendered as plain text.
+
+### Known gaps (not done in the time box)
+
+No authentication/authorisation (anyone can approve or issue), no audit log of
+who did what, no server-side length/type validation of inputs, in-memory data only.
+
 ## Your Task
 
 Three things. All three count.
