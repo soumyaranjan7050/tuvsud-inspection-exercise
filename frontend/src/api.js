@@ -2,6 +2,7 @@ const BASE = '/api';
 
 async function req(path, opts = {}) {
   const res = await fetch(`${BASE}${path}`, {
+    cache: 'no-store',
     headers: { 'Content-Type': 'application/json' },
     ...opts
   });
@@ -27,7 +28,6 @@ export const api = {
   reject: (id, reason) => req(`/inspections/${id}/reject`, {
     method: 'POST', body: JSON.stringify({ reason })
   }),
-  // TODO (candidate): certificate endpoints
-  //   issueCertificate: (id) => req(`/inspections/${id}/certificate`, { method: 'POST' }),
-  //   getCertificate:   (id) => req(`/inspections/${id}/certificate`)
+  issueCertificate: (id) => req(`/inspections/${id}/certificate`, { method: 'POST' }),
+  getCertificate: (id) => req(`/inspections/${id}/certificate`)
 };

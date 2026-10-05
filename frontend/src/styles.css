@@ -48,3 +48,23 @@ body {
 .decision .reject { background: #991b1b; color: #fff; border: 0; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
 .decision .reject:disabled { opacity: .5; cursor: not-allowed; }
 .error { color: #991b1b; }
+
+/* Compliance certificate panel */
+.certificate {
+  border: 2px solid #1a5fb4;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 8px;
+  background: #f6faff;
+}
+.certificate-title {
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1a5fb4;
+}
+.certificate-number {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 4px 0 12px;
+}

@@ -8,10 +8,25 @@ export default function InspectionDetail({ id, onClose, onChanged }) {
     component: '', severity: 'low', description: ''
   });
   const [rejectReason, setRejectReason] = useState('');
+  const [certificate, setCertificate] = useState(null);
+  const [certError, setCertError] = useState(null);
+  const [issuing, setIssuing] = useState(false);
 
   const load = () => {
     setError(null);
-    api.get(id).then(setInspection).catch(e => setError(e.message));
+    setCertificate(null);
+    setCertError(null);
+    api.get(id)
+      .then(insp => {
+        setInspection(insp);
+        // Only approved inspections can have a certificate.
+        if (insp.status === 'approved') {
+          api.getCertificate(id)
+            .then(setCertificate)
+            .catch(() => setCertificate(null)); // 404 = not issued yet
+        }
+      })
+      .catch(e => setError(e.message));
   };
 
   useEffect(load, [id]);
@@ -45,6 +60,19 @@ export default function InspectionDetail({ id, onClose, onChanged }) {
       onChanged?.();
     } catch (err) { setError(err.message); }
   };
+  const issueCertificate = async () => {
+    setCertError(null);
+    setIssuing(true);
+    try {
+      setCertificate(await api.issueCertificate(id));
+      onChanged?.();
+    } catch (err) { setCertError(err.message); }
+    finally { setIssuing(false); }
+  };
+
+  const fmtDate = (iso) => new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
 
   return (
     <div className="detail">
@@ -82,10 +110,7 @@ export default function InspectionDetail({ id, onClose, onChanged }) {
               Rendered as raw HTML so inspectors can format their notes
               (bold, lists, links). Convenient.
             */}
-            <p
-              className="description"
-              dangerouslySetInnerHTML={{ __html: f.description }}
-            />
+             <p className="description">{f.description}</p>
           </li>
         ))}
       </ul>
@@ -134,13 +159,38 @@ export default function InspectionDetail({ id, onClose, onChanged }) {
         </>
       )}
 
-      {/*
-        TODO (candidate): Compliance certificate
-          - If status is 'approved' and no certificate yet:
-            show an "Issue certificate" button.
-          - If a certificate exists: show it in a clean, legible panel
-            (certificate number, issue date, validity, inspector, findings).
-      */}
+      {inspection.status === 'approved' && (
+        <>
+          <h3>Compliance certificate</h3>
+          {certError && <p className="error">Error: {certError}</p>}
+          {!certificate && (
+            <button className="approve" onClick={issueCertificate} disabled={issuing}>
+              {issuing ? 'Issuing…' : 'Issue certificate'}
+            </button>
+          )}
+          {certificate && (
+            <div className="certificate">
+              <div className="certificate-title">Certificate of Compliance</div>
+              <div className="certificate-number">{certificate.certificateNumber}</div>
+              <dl className="meta">
+                <dt>Elevator</dt><dd>{certificate.elevatorId}</dd>
+                <dt>Inspector</dt><dd>{certificate.inspector}</dd>
+                <dt>Issued</dt><dd>{fmtDate(certificate.issuedAt)}</dd>
+                <dt>Valid until</dt><dd>{fmtDate(certificate.validUntil)}</dd>
+              </dl>
+              <h4>Findings at issue ({certificate.findings.length})</h4>
+              {certificate.findings.length === 0 && <p className="muted">No findings.</p>}
+              <ul className="findings">
+                {certificate.findings.map(f => (
+                  <li key={f.id} className={`finding severity-${f.severity}`}>
+                    <strong>{f.component}</strong> ({f.severity}): {f.description}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
