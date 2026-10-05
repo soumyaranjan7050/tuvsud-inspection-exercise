@@ -41,6 +41,9 @@ router.post('/:id/findings', async (req, res, next) => {
     }
     const result = await store.addFinding(req.params.id, { component, severity, description });
     if (!result.ok && result.reason === 'not_found') throw httpError(404, 'Inspection not found');
+    if (!result.ok && result.reason === 'not_pending') {
+      throw httpError(409, 'Findings can only be added to a pending inspection');
+    }
     res.status(201).json(result.inspection);
   } catch (e) { next(e); }
 });
@@ -49,6 +52,9 @@ router.post('/:id/approve', async (req, res, next) => {
   try {
     const result = await store.approve(req.params.id);
     if (!result.ok && result.reason === 'not_found') throw httpError(404, 'Inspection not found');
+    if (!result.ok && result.reason === 'not_pending') {
+      throw httpError(409, 'Only a pending inspection can be approved');
+    }
     res.json(result.inspection);
   } catch (e) { next(e); }
 });
@@ -58,25 +64,35 @@ router.post('/:id/reject', async (req, res, next) => {
     const { reason } = req.body || {};
     const result = await store.reject(req.params.id, reason);
     if (!result.ok && result.reason === 'not_found') throw httpError(404, 'Inspection not found');
+    if (!result.ok && result.reason === 'not_pending') {
+      throw httpError(409, 'Only a pending inspection can be rejected');
+    }
     if (!result.ok && result.reason === 'reason_required') throw httpError(400, 'reason is required');
     res.json(result.inspection);
   } catch (e) { next(e); }
 });
 
-// -------------------------------------------------------------------------
-// TODO (candidate): Compliance Certificate
-//
-//   POST /api/inspections/:id/certificate
-//     - Only for APPROVED inspections (409 otherwise).
-//     - Generate: certificateNumber (unique), issuedAt (ISO),
-//       validUntil (12 months after issuedAt), elevatorId, inspector,
-//       findings snapshot.
-//     - Persist on the inspection. Re-issue policy is your call — document it.
-//
-//   GET /api/inspections/:id/certificate
-//     - Return the persisted certificate JSON, or 404 if not yet issued.
-//
-// See README section "1. Add a Compliance Certificate feature".
-// -------------------------------------------------------------------------
+router.post('/:id/certificate', async (req, res, next) => {
+  try {
+    const result = await store.issueCertificate(req.params.id);
+    if (!result.ok && result.reason === 'not_found') throw httpError(404, 'Inspection not found');
+    if (!result.ok && result.reason === 'not_approved') {
+      throw httpError(409, 'Certificate can only be issued for an approved inspection');
+    }
+    if (!result.ok && result.reason === 'already_issued') {
+      throw httpError(409, 'A certificate has already been issued for this inspection');
+    }
+    res.status(201).json(result.certificate);
+  } catch (e) { next(e); }
+});
+
+router.get('/:id/certificate', async (req, res, next) => {
+  try {
+    const result = await store.getCertificate(req.params.id);
+    if (!result.ok && result.reason === 'not_found') throw httpError(404, 'Inspection not found');
+    if (!result.ok && result.reason === 'no_certificate') throw httpError(404, 'No certificate issued yet');
+    res.json(result.certificate);
+  } catch (e) { next(e); }
+});
 
 module.exports = router;

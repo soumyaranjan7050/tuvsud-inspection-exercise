@@ -1,6 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 
+// Adds whole months in UTC and clamps to month end (29 Feb + 12 months -> 28 Feb).
+function addMonthsUTC(date, months) {
+  const d = new Date(date.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d;
+}
+
 /**
  * In-memory inspection store. Async to mimic real I/O.
  */
@@ -8,6 +19,12 @@ class InspectionStore {
   constructor(seed = []) {
     this.inspections = new Map();
     for (const it of seed) this.inspections.set(it.id, structuredClone(it));
+    // Certificate counter: continue after any certificates already in the seed.
+    this.certSeq = 0;
+    for (const it of this.inspections.values()) {
+      const n = it.certificate && parseInt(it.certificate.certificateNumber.split('-').pop(), 10);
+      if (n > this.certSeq) this.certSeq = n;
+    }
   }
 
   static fromSeedFile(filePath) {
@@ -53,6 +70,7 @@ class InspectionStore {
     return new Promise(resolve => setImmediate(() => {
       const it = this.inspections.get(id);
       if (!it) return resolve({ ok: false, reason: 'not_found' });
+      if (it.status !== 'pending') return resolve({ ok: false, reason: 'not_pending' });
       const finding = {
         id: `f${it.findings.length + 1}-${id}`,
         component, severity, description
@@ -66,6 +84,7 @@ class InspectionStore {
     return new Promise(resolve => setImmediate(() => {
       const it = this.inspections.get(id);
       if (!it) return resolve({ ok: false, reason: 'not_found' });
+      if (it.status !== 'pending') return resolve({ ok: false, reason: 'not_pending' });
       it.status = 'approved';
       it.approvedAt = new Date().toISOString();
       resolve({ ok: true, inspection: this._view(it) });
@@ -76,6 +95,7 @@ class InspectionStore {
     return new Promise(resolve => setImmediate(() => {
       const it = this.inspections.get(id);
       if (!it) return resolve({ ok: false, reason: 'not_found' });
+      if (it.status !== 'pending') return resolve({ ok: false, reason: 'not_pending' });
       if (!reason) return resolve({ ok: false, reason: 'reason_required' });
       it.status = 'rejected';
       it.rejectionReason = reason;
@@ -84,7 +104,41 @@ class InspectionStore {
     }));
   }
 
-  // Candidate: certificate methods live here.
+  /**
+   * Issue a compliance certificate for an approved inspection.
+   * Policy: ONE certificate per inspection, immutable once issued.
+   * A second issue attempt is refused (reason: 'already_issued').
+   */
+  async issueCertificate(id) {
+    return new Promise(resolve => setImmediate(() => {
+      const it = this.inspections.get(id);
+      if (!it) return resolve({ ok: false, reason: 'not_found' });
+      if (it.status !== 'approved') return resolve({ ok: false, reason: 'not_approved' });
+      if (it.certificate) return resolve({ ok: false, reason: 'already_issued' });
+
+      const issuedAt = new Date();
+      this.certSeq += 1;
+      it.certificate = {
+        certificateNumber: `CERT-${issuedAt.getUTCFullYear()}-${String(this.certSeq).padStart(6, '0')}`,
+        inspectionId: it.id,
+        issuedAt: issuedAt.toISOString(),
+        validUntil: addMonthsUTC(issuedAt, 12).toISOString(),
+        elevatorId: it.elevatorId,
+        inspector: it.inspector,
+        findings: structuredClone(it.findings) // snapshot, not a reference
+      };
+      resolve({ ok: true, certificate: this._view(it.certificate) });
+    }));
+  }
+
+  async getCertificate(id) {
+    return new Promise(resolve => setImmediate(() => {
+      const it = this.inspections.get(id);
+      if (!it) return resolve({ ok: false, reason: 'not_found' });
+      if (!it.certificate) return resolve({ ok: false, reason: 'no_certificate' });
+      resolve({ ok: true, certificate: this._view(it.certificate) });
+    }));
+  }
 
   _view(it) {
     return JSON.parse(JSON.stringify(it));
