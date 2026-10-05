@@ -68,7 +68,112 @@ describe('POST /api/inspections/:id/approve', () => {
   });
 });
 
-// TODO (candidate):
-//   - Tests for POST /api/inspections/:id/certificate (happy path + edge case)
-//   - Tests for GET /api/inspections/:id/certificate
-//   - A test that would have caught the bug you fixed
+
+describe('POST /api/inspections/:id/certificate', () => {
+  it('issues a certificate for an approved inspection (happy path)', async () => {
+    const { app } = freshApp();
+    const res = await request(app).post('/api/inspections/insp-002/certificate');
+    expect(res.status).toBe(201);
+    expect(res.body.certificateNumber).toMatch(/^CERT-\d{4}-\d{6}$/);
+    expect(res.body.elevatorId).toBe('LIFT-DE-2201');
+    expect(res.body.inspector).toBe('Marco Rossi');
+    expect(Array.isArray(res.body.findings)).toBe(true);
+
+    const issued = new Date(res.body.issuedAt);
+    const until = new Date(res.body.validUntil);
+    expect(until.getUTCFullYear() - issued.getUTCFullYear()).toBe(1);
+    expect(until.getUTCMonth()).toBe(issued.getUTCMonth());
+  });
+
+  it('returns 409 for a non-approved inspection (edge case)', async () => {
+    const { app } = freshApp();
+    const pending = await request(app).post('/api/inspections/insp-001/certificate');
+    const rejected = await request(app).post('/api/inspections/insp-003/certificate');
+    expect(pending.status).toBe(409);
+    expect(rejected.status).toBe(409);
+  });
+
+  it('returns 409 on re-issue and keeps the original certificate', async () => {
+    const { app } = freshApp();
+    const first = await request(app).post('/api/inspections/insp-002/certificate');
+    const second = await request(app).post('/api/inspections/insp-002/certificate');
+    expect(second.status).toBe(409);
+    const got = await request(app).get('/api/inspections/insp-002/certificate');
+    expect(got.body.certificateNumber).toBe(first.body.certificateNumber);
+  });
+
+  it('returns 404 for an unknown inspection', async () => {
+    const { app } = freshApp();
+    const res = await request(app).post('/api/inspections/nope/certificate');
+    expect(res.status).toBe(404);
+  });
+
+  it('generates unique certificate numbers', async () => {
+    const { app } = freshApp();
+    await request(app).post('/api/inspections/insp-001/approve');
+    const a = await request(app).post('/api/inspections/insp-001/certificate');
+    const b = await request(app).post('/api/inspections/insp-002/certificate');
+    expect(a.body.certificateNumber).not.toBe(b.body.certificateNumber);
+  });
+
+  it('snapshots findings (later changes do not alter the certificate)', async () => {
+    const { app } = freshApp();
+    await request(app).post('/api/inspections/insp-001/findings')
+      .send({ component: 'Door', severity: 'low', description: 'Rattle' });
+    await request(app).post('/api/inspections/insp-001/approve');
+    const cert = await request(app).post('/api/inspections/insp-001/certificate');
+    expect(cert.body.findings).toHaveLength(1);
+    expect(cert.body.findings[0].component).toBe('Door');
+  });
+});
+
+describe('GET /api/inspections/:id/certificate', () => {
+  it('returns 404 when no certificate has been issued', async () => {
+    const { app } = freshApp();
+    const res = await request(app).get('/api/inspections/insp-002/certificate');
+    expect(res.status).toBe(404);
+  });
+
+  it('returns the persisted certificate', async () => {
+    const { app } = freshApp();
+    const issued = await request(app).post('/api/inspections/insp-002/certificate');
+    const res = await request(app).get('/api/inspections/insp-002/certificate');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual(issued.body);
+  });
+});
+
+// Regression tests for the bug: decisions were not guarded by status, so a
+// rejected inspection could be approved (and then certified) and an approved
+// one could be re-approved or modified.
+describe('state transition guards (bug regression)', () => {
+  it('cannot approve a rejected inspection', async () => {
+    const { app } = freshApp();
+    const res = await request(app).post('/api/inspections/insp-003/approve');
+    expect(res.status).toBe(409);
+    const after = await request(app).get('/api/inspections/insp-003');
+    expect(after.body.status).toBe('rejected');
+  });
+
+  it('cannot approve twice (approvedAt must not change)', async () => {
+    const { app } = freshApp();
+    const first = await request(app).post('/api/inspections/insp-001/approve');
+    const second = await request(app).post('/api/inspections/insp-001/approve');
+    expect(second.status).toBe(409);
+    const after = await request(app).get('/api/inspections/insp-001');
+    expect(after.body.approvedAt).toBe(first.body.approvedAt);
+  });
+
+  it('cannot reject an approved inspection', async () => {
+    const { app } = freshApp();
+    const res = await request(app).post('/api/inspections/insp-002/reject').send({ reason: 'x' });
+    expect(res.status).toBe(409);
+  });
+
+  it('cannot add findings to a finalised inspection', async () => {
+    const { app } = freshApp();
+    const res = await request(app).post('/api/inspections/insp-002/findings')
+      .send({ component: 'Door', severity: 'low', description: 'late' });
+    expect(res.status).toBe(409);
+  });
+});
